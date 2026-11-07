@@ -31,7 +31,9 @@ GitHub runs `schedule` only for workflow files on the default branch, and it onl
 
 This workflow is stored on `svge-main` so `main` stays pristine. The repository default branch therefore needs to be `svge-main` before the schedule or the manual button can see it.
 
-At setup, this agent called `PATCH /repos/svge-ai/paper_forge` with `default_branch=svge-main`. GitHub returned HTTP 403 `Resource not accessible by integration` (`https://docs.github.com/rest/repos/repos#update-a-repository`). The default branch is still `main`. This credential cannot change repository settings, and no protection was added or removed to get around that.
+At setup, this agent called `PATCH /repos/svge-ai/paper_forge` with `default_branch=svge-main`. GitHub returned HTTP 403 `Resource not accessible by integration` (`https://docs.github.com/rest/repos/repos#update-a-repository`). The default branch was still `main` at that time. This credential cannot change repository settings, and no protection was added or removed to get around that.
+
+The founder later set the default branch to `svge-main`. Later corrections do not change that setting.
 
 An administrator can switch the default branch after the setup pull request is merged:
 
@@ -61,6 +63,7 @@ Branch protection observed at setup, and not changed:
 | Destination | `refs/heads/main` on `svge-ai/paper_forge` only |
 | Push refspec | `HEAD:refs/heads/main` |
 | Token | Built-in `GITHUB_TOKEN` with workflow permission `contents: write` |
+| Actions called | None. The triggering commit is fetched with inline `git` |
 
 The script checks all of the following before a push:
 
@@ -83,14 +86,19 @@ Global and system Git config are ignored for these commands so a URL rewrite can
 
 A push made with `GITHUB_TOKEN` does not start other workflows. The existing CI workflow also listens only for `push` and `pull_request` targeting `main`. This setup does not change that CI workflow. Moving the default branch to `svge-main` means pull requests against `svge-main` will not run `.github/workflows/ci.yml` until a later, separate change adds that branch. Synced commits on `main` are commits that already exist on the parent.
 
+## Actions the organization allows
+
+The founder stated the organization policy after enabling Actions: inline workflow steps are allowed, actions must be owned by `svge-ai`, and any action reference must be a full 40-character commit SHA. `GET /orgs/svge-ai/actions/permissions` and `GET /orgs/svge-ai/actions/permissions/selected-actions` both returned HTTP 403 `Resource not accessible by integration`, so this document records that stated policy. It does not change the organization setting.
+
+The sync workflow has no `uses:` step. It fetches `https://github.com/svge-ai/paper_forge.git` at the run's `GITHUB_SHA` with the runner's `git`, ignores global and system Git config, and does not put a token on that fetch. The built-in `GITHUB_TOKEN` is passed only to the fast-forward step.
+
+`svge-ai/checkout` is a fork of `actions/checkout`. The sync workflow does not use that fork. The previously merged workflow called `actions/checkout@11d5960a326750d5838078e36cf38b85af677262`, which is `actions/checkout` v4.4.0. That reference is a full SHA and is owned by the `actions` organization, so it does not meet the stated policy.
+
+`.github/workflows/ci.yml` is upstream CI and is not changed. It still references `actions/checkout@v4`, `erlef/setup-beam@v1`, and `actions/cache@v4`.
+
 ## What stays inactive
 
-Preparing this workflow does not enable it. It is inactive until all of the following are true:
-
-1. The setup pull request is merged into `svge-main`. This setup does not merge it.
-2. An administrator sets the default branch to `svge-main`. The setup request for that setting was denied with HTTP 403.
-3. GitHub Actions is allowed to run for this repository. `GET /repos/svge-ai/paper_forge/actions/permissions` and `GET /repos/svge-ai/paper_forge/actions/permissions/workflow` both returned HTTP 403 `Resource not accessible by integration`, so the current cap is unknown.
-4. Someone runs the workflow and the run succeeds. A dry run can be the first exercise. No run has been started from this setup.
+The setup pull request was squash-merged and the founder set the default branch to `svge-main`. The founder also enabled Actions for the organization. No sync run has succeeded. `GET /repos/svge-ai/paper_forge/actions/permissions` and `GET /repos/svge-ai/paper_forge/actions/permissions/workflow` returned HTTP 403 `Resource not accessible by integration`, so the repository workflow-token cap is still unread. Creating a workflow dispatch returned HTTP 403 with `x-accepted-github-permissions: actions=write`. Enabling the organization setting does not grant this integration that permission, and dispatch was not retried.
 
 If the organization or repository caps `GITHUB_TOKEN` at read, the fast-forward push fails and `main` stays where it is. Do not work around that with a personal access token unless a later decision explicitly allows one. Do not weaken branch protection to make the push succeed.
 
