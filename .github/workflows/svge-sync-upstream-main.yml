@@ -1,0 +1,57 @@
+# SVGE-only workflow. Keep this file on svge-main.
+# GitHub reads schedule and workflow_dispatch from the default branch.
+# Canonical main must stay a pristine upstream mirror, so this file does not
+# belong on main. The default branch has to be svge-main before a schedule
+# or a manual run can see this workflow. The job itself updates only
+# refs/heads/main.
+
+name: Sync upstream main
+
+on:
+  schedule:
+    # 07:17 UTC daily. Avoids the top of the hour, when scheduled runs are
+    # most often delayed or dropped.
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Check only; do not push"
+        required: false
+        type: boolean
+        default: false
+
+# contents: write is the narrowest Actions permission that can move a ref.
+# GitHub does not scope it to one branch. The script refuses every push
+# except HEAD:refs/heads/main. No pull-request, secret, or id-token access.
+permissions:
+  contents: write
+
+concurrency:
+  group: svge-sync-upstream-main
+  cancel-in-progress: false
+
+jobs:
+  sync-main:
+    name: Fast-forward canonical main
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Refuse any workflow ref other than svge-main
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REPOSITORY" != "svge-ai/paper_forge" ] || [ "$GITHUB_REF" != "refs/heads/svge-main" ]; then
+            echo "::error::Refusing to run from ${GITHUB_REPOSITORY} ${GITHUB_REF}. This workflow runs from refs/heads/svge-main only."
+            exit 1
+          fi
+
+      - name: Check out the sync script at the triggering commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Fast-forward main from Manuel1471/paper_forge
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SYNC_DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '0' }}
+        run: bash .github/scripts/svge-sync-upstream-main.sh
