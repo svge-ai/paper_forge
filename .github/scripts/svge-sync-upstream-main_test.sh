@@ -42,8 +42,18 @@ else
   fail "workflow must be scheduled and manual"
 fi
 grep -q 'contents: write' "$workflow" || fail "workflow must request contents write"
-grep -q 'persist-credentials: false' "$workflow" || fail "checkout must not persist credentials"
-grep -q 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262' "$workflow" || fail "checkout pin drifted"
+grep -q 'https://github.com/svge-ai/paper_forge.git' "$workflow" || fail "script fetch URL drifted"
+# shellcheck disable=SC2016 # the workflow file contains this literal comparison
+grep -qF '!= "$GITHUB_SHA"' "$workflow" || fail "fetch must stop unless HEAD is GITHUB_SHA"
+grep -q 'GIT_CONFIG_NOSYSTEM' "$workflow" || fail "fetch must ignore system git config"
+if grep -nE '^[[:space:]]*uses:' "$workflow"; then
+  fail "sync workflow must not call an action"
+fi
+if grep -nE 'actions/checkout|erlef/|docker://' "$workflow" | grep -vE ':[ 	]*#' >/dev/null; then
+  fail "sync workflow references an external action outside a comment"
+fi
+token_lines="$(grep -c 'github.token' "$workflow" || true)"
+[[ "$token_lines" == "1" ]] || fail "github.token must appear only on the sync step"
 if grep -nE 'secrets\.|PERSONAL|PAT|pull-requests:|id-token:' "$workflow"; then
   fail "workflow requests a secret or an extra permission"
 fi

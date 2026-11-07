@@ -44,11 +44,43 @@ jobs:
             exit 1
           fi
 
-      - name: Check out the sync script at the triggering commit
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          persist-credentials: false
-          fetch-depth: 1
+      # No `uses:` action. The organization allows inline steps or
+      # svge-ai-owned actions only, and any action ref must be a full SHA.
+      # actions/checkout is owned by the actions organization. svge-ai/checkout
+      # is a fork of that action and is not used. This step fetches the exact
+      # triggering commit with anonymous git and stores no credentials.
+      - name: Fetch the sync script at the triggering commit
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+          GIT_CONFIG_NOSYSTEM: "1"
+        run: |
+          set -euo pipefail
+          if [ -z "${GITHUB_WORKSPACE}" ] || [ "${GITHUB_WORKSPACE}" = "/" ]; then
+            echo "::error::Refusing to initialize ${GITHUB_WORKSPACE:-<empty>}"
+            exit 1
+          fi
+          if [[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::GITHUB_SHA is not a 40-character commit SHA"
+            exit 1
+          fi
+          empty_gitconfig="$(mktemp)"
+          export GIT_CONFIG_GLOBAL="$empty_gitconfig"
+          cd "${GITHUB_WORKSPACE}"
+          rm -rf .git
+          git init --quiet .
+          git remote add origin https://github.com/svge-ai/paper_forge.git
+          git fetch --depth 1 --no-tags origin "$GITHUB_SHA"
+          git checkout --detach FETCH_HEAD
+          head_sha="$(git rev-parse HEAD)"
+          if [ "$head_sha" != "$GITHUB_SHA" ]; then
+            echo "::error::Fetched ${head_sha}, expected ${GITHUB_SHA}"
+            exit 1
+          fi
+          test -f .github/scripts/svge-sync-upstream-main.sh
+          if git config --show-origin --get-regexp '^(credential|http|url)\.' >/dev/null 2>&1; then
+            echo "::error::Git credentials or URL rewrites were configured during fetch"
+            exit 1
+          fi
 
       - name: Fast-forward main from Manuel1471/paper_forge
         env:
