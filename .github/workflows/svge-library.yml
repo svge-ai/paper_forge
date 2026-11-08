@@ -1,0 +1,62 @@
+# Library tests for pull requests into svge-main.
+# Upstream .github/workflows/ci.yml stays on its main-only triggers and is
+# not edited here. This workflow uses the GitHub-created checkout action at
+# a full SHA and installs Elixir inline. It does not call marketplace
+# actions outside the actions organization.
+
+name: Library tests
+
+on:
+  pull_request:
+    branches:
+      - svge-main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: svge-library-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Elixir 1.20.2 / OTP 28.3
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      MIX_ENV: test
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Install OTP 28.3 and Elixir 1.20.2
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/opt"
+          curl -fsSL -o /tmp/otp.tar.gz https://builds.hex.pm/builds/otp/ubuntu-24.04/OTP-28.3.tar.gz
+          curl -fsSL -o /tmp/elixir.zip https://builds.hex.pm/builds/elixir/v1.20.2-otp-28.zip
+          tar -xzf /tmp/otp.tar.gz -C "$HOME/opt"
+          "$HOME/opt/OTP-28.3/Install" -minimal "$HOME/opt/OTP-28.3"
+          unzip -q /tmp/elixir.zip -d "$HOME/opt/elixir"
+          echo "$HOME/opt/OTP-28.3/bin" >> "$GITHUB_PATH"
+          echo "$HOME/opt/elixir/bin" >> "$GITHUB_PATH"
+
+      - name: Install Hex and Rebar
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Check dependency state
+        run: mix deps.unlock --check-unused
+
+      - name: Check formatting
+        run: mix format --check-formatted
+
+      - name: Compile with warnings as errors
+        run: mix compile --warnings-as-errors
+
+      - name: Run tests
+        run: mix test
