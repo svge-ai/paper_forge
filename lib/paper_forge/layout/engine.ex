@@ -1314,6 +1314,20 @@ defmodule PaperForge.Layout.Engine do
     )
   end
 
+  # Header paint follows the row that is actually the header. Repeat is a
+  # separate choice: a later page that omitted the header must not restyle
+  # its first body row just because header typography was configured.
+  # Without those options, the legacy flag remains `repeat_header`.
+  defp table_fragment_header?(block, rows) do
+    repeat? = Keyword.get(block.options, :repeat_header, true)
+
+    if table_header_style?(block) do
+      match?([%{header?: true} | _], rows)
+    else
+      repeat?
+    end
+  end
+
   defp table_column_widths(block, state) do
     count = max(length(block.content.columns), 1)
     width = fragment_width(%{block: block}, state.page)
@@ -2050,7 +2064,7 @@ defmodule PaperForge.Layout.Engine do
         padding: Keyword.get(block.options, :padding, 6),
         padding_x: table_padding_x(block),
         padding_y: table_padding_y(block),
-        header: Keyword.get(block.options, :repeat_header, true) or table_header_style?(block),
+        header: table_fragment_header?(block, measured_rows),
         font: Keyword.get(block.options, :font, document.default_font),
         size: Keyword.get(block.options, :size, 9),
         header_font:

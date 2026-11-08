@@ -156,4 +156,47 @@ defmodule PaperForge.TableStyleTest do
     assert Enum.any?(rendered_text, &String.contains?(&1, "wrapped"))
     assert Enum.any?(rendered_text, &String.contains?(&1, "Row 30"))
   end
+
+  test "header styles stay on the header when later pages do not repeat it" do
+    rows = for index <- 1..12, do: ["Row #{index}"]
+
+    {_, report} =
+      PaperForge.new()
+      |> PaperForge.layout(
+        fn flow ->
+          Flow.table(flow, ["Name"], rows,
+            repeat_header: false,
+            row_height: 20,
+            padding_y: 4.5,
+            font: :helvetica,
+            size: 9.75,
+            cell_line_height: 14.1375,
+            header_font: :helvetica_bold,
+            header_size: 9,
+            header_line_height: 12.15
+          )
+        end,
+        page_options: [size: {240, 120}, margins: 24]
+      )
+
+    assert report.pages > 1
+    [first | rest] = report.rendered_pages
+
+    assert {:text_box, "Name", header_options} =
+             Enum.find(first.operations, &match?({:text_box, "Name", _}, &1))
+
+    assert header_options[:font] == :helvetica_bold
+    assert header_options[:size] == 9
+
+    for page <- rest do
+      refute Enum.any?(page.operations, &match?({:text_box, "Name", _}, &1))
+
+      assert {:text_box, "Row " <> _, options} =
+               Enum.find(page.operations, &match?({:text_box, "Row " <> _, _}, &1))
+
+      assert options[:font] == :helvetica
+      assert options[:size] == 9.75
+      assert options[:line_height] == 14.1375
+    end
+  end
 end
